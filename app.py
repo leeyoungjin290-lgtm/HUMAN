@@ -151,4 +151,235 @@ def advance_turn():
     active_ratio = active_count / N
 
     # 1. 유행 참여 (흥미 정도가 높을수록 참여 확률 증가)
-    join_prob = np
+    join_prob = np.clip(
+        active_ratio * interest_level,
+        0.0,
+        1.0
+    )
+
+    if active_count > 0 and len(unexposed_indices) > 0:
+
+        random_values = np.random.random(
+            len(unexposed_indices)
+        )
+
+        new_adopters = unexposed_indices[
+            random_values < join_prob
+        ]
+
+    else:
+        new_adopters = np.array([], dtype=int)
+
+    # 2. 기존 사용자의 흥미 감소
+    remaining[active_indices] -= 1
+
+    # 3. 만족 발생 (만족도가 높을수록 확률과 연장 턴 증가)
+    if active_count > 0:
+
+        random_values = np.random.random(active_count)
+
+        satisfied_indices = active_indices[
+            random_values < satisfaction_prob
+        ]
+
+        remaining[satisfied_indices] += satisfaction_extension
+
+    # 4. 흥미 지속 턴이 끝난 사용자는 폐기 (폐기는 다시 참여하지 않음)
+    expired_indices = active_indices[
+        remaining[active_indices] <= 0
+    ]
+
+    states[expired_indices] = 2
+    remaining[expired_indices] = 0
+
+    # 5. 신규 사용자 등록
+    states[new_adopters] = 1
+    remaining[new_adopters] = interest_duration
+
+    # 6. 상태 저장
+    st.session_state.states = states
+    st.session_state.remaining = remaining
+
+    # 7. 턴 증가
+    st.session_state.turn += 1
+
+    st.session_state.history.append({
+        "턴": st.session_state.turn,
+        "미체험자": int(np.sum(states == 0)),
+        "참여 중": int(np.sum(states == 1)),
+        "폐기": int(np.sum(states == 2))
+    })
+
+    # 더 이상 참여 중인 사람이 없으면 종료
+    if (
+        st.session_state.turn >= max_turns
+        or int(np.sum(states == 1)) == 0
+    ):
+        st.session_state.running = False
+
+
+# --------------------------------------------------
+# 화면 표시 함수
+# --------------------------------------------------
+
+colors = {
+    0: "#B3E5FC",   # 미체험자: 연한 하늘색
+    1: "#1565C0",   # 참여 중: 파란색
+    2: "#E53935"    # 폐기: 빨간색
+}
+
+text_colors = {
+    0: "#01579B",
+    1: "white",
+    2: "white"
+}
+
+labels = {
+    0: "미체험자",
+    1: "참여 중",
+    2: "폐기"
+}
+
+
+def render_all():
+
+    states = st.session_state.states
+
+    st.subheader(
+        f"현재 턴: {st.session_state.turn} / {max_turns}"
+    )
+
+    if st.session_state.running:
+        st.success("시뮬레이션 진행 가능")
+    else:
+        st.info("시뮬레이션 종료")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("미체험자", int(np.sum(states == 0)))
+    c2.metric("참여 중", int(np.sum(states == 1)))
+    c3.metric("폐기", int(np.sum(states == 2)))
+
+    # 시뮬레이션 보드
+    st.divider()
+    st.subheader("사용자 상태 시뮬레이션")
+
+    columns = 10
+
+    for start in range(0, len(states), columns):
+
+        cols = st.columns(columns)
+
+        for j, state in enumerate(states[start:start + columns]):
+
+            s = int(state)
+
+            with cols[j]:
+                st.markdown(
+                    f"""
+                    <div style="
+                        background:{colors[s]};
+                        height:55px;
+                        border-radius:6px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        color:{text_colors[s]};
+                        font-weight:bold;
+                        margin-bottom:5px;
+                    ">
+                        {start + j + 1}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                st.caption(labels[s])
+
+    # 범례
+    legend_html = "".join(
+        f"""
+        <span style="display:inline-flex;align-items:center;margin-right:18px;">
+            <span style="
+                display:inline-block;
+                width:16px;
+                height:16px;
+                border-radius:4px;
+                background:{colors[k]};
+                margin-right:6px;
+            "></span>{labels[k]}
+        </span>
+        """
+        for k in (0, 1, 2)
+    )
+
+    st.markdown(legend_html, unsafe_allow_html=True)
+
+    # 변화 그래프
+    st.divider()
+    st.subheader("사용자 수 변화")
+
+    history_df = pd.DataFrame(
+        st.session_state.history
+    ).set_index("턴")
+
+    st.line_chart(
+        history_df,
+        color=[colors[0], colors[1], colors[2]]
+    )
+
+
+# --------------------------------------------------
+# 실행 버튼
+# --------------------------------------------------
+
+st.divider()
+
+col1, col2, col3 = st.columns(3)
+
+run_all = False
+
+with col1:
+    if st.button("▶ 한 턴 진행", use_container_width=True):
+        advance_turn()
+
+with col2:
+    if st.button("⏩ 전체 실행", use_container_width=True):
+        run_all = True
+
+with col3:
+    if st.button("🔄 초기화", use_container_width=True):
+        reset_simulation()
+
+# --------------------------------------------------
+# 화면 출력 (전체 실행 시 턴마다 갱신)
+# --------------------------------------------------
+
+placeholder = st.empty()
+
+if run_all:
+    while st.session_state.running:
+        advance_turn()
+        with placeholder.container():
+            render_all()
+        time.sleep(STEP_DELAY)
+
+with placeholder.container():
+    render_all()
+
+# --------------------------------------------------
+# 사용자 상세 정보 (맨 아래에 한 번만 표시)
+# --------------------------------------------------
+
+with st.expander("사용자별 상세 정보"):
+
+    detail_df = pd.DataFrame({
+        "사용자": np.arange(1, int(N) + 1),
+        "상태": [labels[int(x)] for x in st.session_state.states],
+        "남은 흥미 지속 턴": st.session_state.remaining
+    })
+
+    st.dataframe(
+        detail_df,
+        use_container_width=True,
+        hide_index=True
+    )

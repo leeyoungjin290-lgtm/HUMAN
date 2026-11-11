@@ -102,7 +102,7 @@ def reset_simulation():
     st.session_state.history = [{
         "턴": 0,
         "미체험자": int(np.sum(states == 0)),
-        "참여 중": int(np.sum(states == 1)),
+        "사용자": int(np.sum(states == 1)),
         "폐기": int(np.sum(states == 2))
     }]
 
@@ -206,11 +206,11 @@ def advance_turn():
     st.session_state.history.append({
         "턴": st.session_state.turn,
         "미체험자": int(np.sum(states == 0)),
-        "참여 중": int(np.sum(states == 1)),
+        "사용자": int(np.sum(states == 1)),
         "폐기": int(np.sum(states == 2))
     })
 
-    # 더 이상 참여 중인 사람이 없으면 종료
+    # 더 이상 사용자가 없으면 종료
     if (
         st.session_state.turn >= max_turns
         or int(np.sum(states == 1)) == 0
@@ -224,7 +224,7 @@ def advance_turn():
 
 colors = {
     0: "#B3E5FC",   # 미체험자: 연한 하늘색
-    1: "#1565C0",   # 참여 중: 파란색
+    1: "#1565C0",   # 사용자: 파란색
     2: "#E53935"    # 폐기: 빨간색
 }
 
@@ -236,7 +236,7 @@ text_colors = {
 
 labels = {
     0: "미체험자",
-    1: "참여 중",
+    1: "사용자",
     2: "폐기"
 }
 
@@ -256,7 +256,7 @@ def render_all():
 
     c1, c2, c3 = st.columns(3)
     c1.metric("미체험자", int(np.sum(states == 0)))
-    c2.metric("참여 중", int(np.sum(states == 1)))
+    c2.metric("사용자", int(np.sum(states == 1)))
     c3.metric("폐기", int(np.sum(states == 2)))
 
     # 시뮬레이션 보드
